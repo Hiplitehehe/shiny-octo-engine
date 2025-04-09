@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>YouTube Auto Uploader</title>
+  <style>
+    #spinner {
+      font-style: italic;
+      color: gray;
+      margin-bottom: 10px;
+    }
+  </style>
+  <script>
+    const CLIENT_ID = 'YOUR_CLIENT_ID_HERE'; // Replace with real client ID
+    const SCOPES = 'https://www.googleapis.com/auth/youtube.upload';
+    let accessToken = '';
+
+    function onGapiLoad() {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('authBtn').style.display = 'inline-block';
+    }
+
+    function handleAuth() {
+      gapi.load('client:auth2', () => {
+        gapi.client.init({
+          clientId: CLIENT_ID,
+          scope: SCOPES
+        }).then(() => {
+          const authInstance = gapi.auth2.getAuthInstance();
+          return authInstance.signIn();
+        }).then(user => {
+          accessToken = user.getAuthResponse().access_token;
+          document.getElementById('status').innerText = 'Signed in and ready to upload!';
+        }).catch(err => {
+          console.error('Sign-in error:', err);
+          document.getElementById('status').innerText = 'Sign-in failed.';
+        });
+      });
+    }
+
+    function uploadVideo() {
+      const file = document.getElementById('videoFile').files[0];
+      const title = document.getElementById('title').value || 'Untitled';
+      const description = document.getElementById('description').value || 'Uploaded via Web App';
+
+      if (!file || !accessToken) {
+        alert('Please sign in and select a video file.');
+        return;
+      }
+
+      const metadata = {
+        snippet: { title, description },
+        status: { privacyStatus: 'private' }
+      };
+
+      fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + accessToken,
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Length': file.size,
+          'X-Upload-Content-Type': file.type
+        },
+        body: JSON.stringify(metadata)
+      })
+      .then(res => {
+        const uploadUrl = res.headers.get('location');
+        if (!uploadUrl) throw new Error('Failed to get upload URL.');
+        return fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+            'Content-Length': file.size
+          },
+          body: file
+        });
+      })
+      .then(res => {
+        if (res.ok) {
+          document.getElementById('status').innerText = 'Upload complete!';
+        } else {
+          throw new Error('Upload failed');
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('status').innerText = 'Error: ' + err.message;
+      });
+    }
+  </script>
+  <script src="https://apis.google.com/js/api.js?onload=onGapiLoad"></script>
+</head>
+<body>
+  <h2>YouTube Video Uploader</h2>
+
+  <div id="spinner">Loading Google Sign-In...</div>
+  <button id="authBtn" onclick="handleAuth()" style="display:none;">Sign in with Google</button>
+  <br><br>
+
+  <input type="file" id="videoFile" accept="video/*" />
+  <input type="text" id="title" placeholder="Title" />
+  <input type="text" id="description" placeholder="Description" />
+  <button onclick="uploadVideo()">Upload to YouTube</button>
+
+  <div id="status" style="margin-top: 20px;"></div>
+</body>
+</html>
